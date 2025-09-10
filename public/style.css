@@ -1,0 +1,114 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f4f4f4;
+}
+
+nav {
+    background-color: #333;
+    color: white;
+    padding: 0 20px;
+}
+
+.nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-tabs .tab-button {
+    background: none;
+    border: none;
+    color: white;
+    padding: 15px 20px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.nav-tabs .tab-button.active {
+    background-color: #555;
+}
+
+main {
+    padding: 20px;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+h2 {
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 10px;
+}
+
+/* Form and Table Styles */
+.product-form-container, .product-list-container {
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+    margin-top: 20px;
+}
+
+form {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+form input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+form button {
+    padding: 10px 15px;
+    background-color: #0051c3;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+}
+
+/* Sale tab layout */
+.sale-container {
+    display: flex;
+    gap: 20px;
+}
+
+.scanner-container {
+    flex: 1;
+}
+
+.cart-container {
+    flex: 1;
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+}
+
+#reader {
+    max-width: 500px;
+    border: 1px solid #ddd;
+}

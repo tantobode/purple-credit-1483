@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS System</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body>
+    <nav>
+        <div class="nav-container">
+            <h1>POS System</h1>
+            <div class="nav-tabs">
+                <button class="tab-button active" data-tab="sale">Sale</button>
+                <button class="tab-button" data-tab="products">Products</button>
+                <button class="tab-button" data-tab="expenses">Expenses</button>
+                <button class="tab-button" data-tab="reports">Reports</button>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div id="sale" class="tab-content active">
+            <h2>New Sale</h2>
+            <div class="sale-container">
+                <div class="scanner-container">
+                    <div id="reader" width="100%"></div>
+                    <div id="scanned-result"></div>
+                </div>
+                <div class="cart-container">
+                    <h3>Current Sale</h3>
+                    <ul id="cart-items">
+                        <!-- Cart items will be added here -->
+                    </ul>
+                    <p>Total: $<span id="cart-total">0.00</span></p>
+                    <button id="complete-sale-btn">Complete Sale</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="products" class="tab-content">
+            <h2>Manage Products</h2>
+            <div class="product-form-container">
+                <h3>Add New Product</h3>
+                <form id="add-product-form">
+                    <input type="text" name="name" placeholder="Product Name" required>
+                    <input type="number" name="price" step="0.01" placeholder="Price" required>
+                    <input type="number" name="stock" placeholder="Stock" required>
+                    <input type="text" name="barcode" placeholder="Barcode">
+                    <button type="submit">Add Product</button>
+                </form>
+            </div>
+            <div class="product-list-container">
+                <h3>Product List</h3>
+                <table id="product-list-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                            <th>Barcode</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Product rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="expenses" class="tab-content">
+            <h2>Record Expense</h2>
+            <div class="expense-form-container">
+                <form id="add-expense-form">
+                    <input type="text" name="description" placeholder="Expense Description" required>
+                    <input type="number" name="amount" step="0.01" placeholder="Amount" required>
+                    <button type="submit">Record Expense</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="reports" class="tab-content">
+            <h2>Reports</h2>
+            <div class="reports-container">
+                <h3>Financial Summary</h3>
+                <p>Total Income: $<span id="total-income">0.00</span></p>
+                <p>Total Expenses: $<span id="total-expenses">0.00</span></p>
+                <p>Net Profit: $<span id="net-profit">0.00</span></p>
+            </div>
+        </div>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>

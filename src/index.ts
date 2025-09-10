@@ -1,96 +1,178 @@
-import { issuer } from "@openauthjs/openauth";
-import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
-import { PasswordProvider } from "@openauthjs/openauth/provider/password";
-import { PasswordUI } from "@openauthjs/openauth/ui/password";
-import { createSubjects } from "@openauthjs/openauth/subject";
-import { object, string } from "valibot";
+import { Router, IRequest } from 'itty-router';
+import { issuer } from '@openauthjs/openauth';
+import { CloudflareStorage } from '@openauthjs/openauth/storage/cloudflare';
+import { PasswordProvider } from '@openauthjs/openauth/provider/password';
+import { PasswordUI } from '@openauthjs/openauth/ui/password';
+import { createSubjects } from '@openauthjs/openauth/subject';
+import { object, string, parse, optional, number } from 'valibot';
 
-// This value should be shared between the OpenAuth server Worker and other
-// client Workers that you connect to it, so the types and schema validation are
-// consistent.
+// Define the shape of our user subject for OpenAuth
 const subjects = createSubjects({
   user: object({
     id: string(),
+    role: string(),
   }),
 });
 
-export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // This top section is just for demo purposes. In a real setup another
-    // application would redirect the user to this Worker to be authenticated,
-    // and after signing in or registering the user would be redirected back to
-    // the application they came from. In our demo setup there is no other
-    // application, so this Worker needs to do the initial redirect and handle
-    // the callback redirect on completion.
-    const url = new URL(request.url);
-    if (url.pathname === "/") {
-      url.searchParams.set("redirect_uri", url.origin + "/callback");
-      url.searchParams.set("client_id", "your-client-id");
-      url.searchParams.set("response_type", "code");
-      url.pathname = "/authorize";
-      return Response.redirect(url.toString());
-    } else if (url.pathname === "/callback") {
-      return Response.json({
-        message: "OAuth flow complete!",
-        params: Object.fromEntries(url.searchParams.entries()),
-      });
+// Helper to create the OpenAuth issuer
+const createAuth = (env: Env) => {
+  return issuer({
+    storage: CloudflareStorage({ namespace: env.AUTH_STORAGE }),
+    subjects,
+    providers: {
+      password: PasswordProvider(
+        PasswordUI({
+          sendCode: async (email, code) => console.log(`Sending code ${code} to ${email}`),
+          copy: { input_code: 'Code (check Worker logs)' },
+        }),
+      ),
+    },
+    theme: { title: 'POS System Auth', primary: '#0051c3' },
+    success: async (ctx, value) => {
+      const user = await getOrCreateUser(env, value.email);
+      return ctx.subject('user', { id: user.id, role: user.role });
+    },
+  });
+};
+
+// --- AUTHENTICATION MIDDLEWARE ---
+const withAuth = async (request: IRequest, env: Env) => {
+    const auth = createAuth(env);
+    // This is a guess based on common patterns in auth libraries.
+    // The goal is to get the session information from the request's cookies.
+    const session = await auth.getSession(request, 'user');
+
+    if (!session?.id) {
+        return new Response('Unauthorized. Please log in.', { status: 401 });
     }
+    request.user = session; // Attach user to the request for downstream handlers
+};
 
-    // The real OpenAuth server code starts here:
-    return issuer({
-      storage: CloudflareStorage({
-        namespace: env.AUTH_STORAGE,
-      }),
-      subjects,
-      providers: {
-        password: PasswordProvider(
-          PasswordUI({
-            // eslint-disable-next-line @typescript-eslint/require-await
-            sendCode: async (email, code) => {
-              // This is where you would email the verification code to the
-              // user, e.g. using Resend:
-              // https://resend.com/docs/send-with-cloudflare-workers
-              console.log(`Sending code ${code} to ${email}`);
-            },
-            copy: {
-              input_code: "Code (check Worker logs)",
-            },
-          }),
-        ),
-      },
-      theme: {
-        title: "myAuth",
-        primary: "#0051c3",
-        favicon: "https://workers.cloudflare.com//favicon.ico",
-        logo: {
-          dark: "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/db1e5c92-d3a6-4ea9-3e72-155844211f00/public",
-          light:
-            "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fa5a3023-7da9-466b-98a7-4ce01ee6c700/public",
-        },
-      },
-      success: async (ctx, value) => {
-        return ctx.subject("user", {
-          id: await getOrCreateUser(env, value.email),
-        });
-      },
-    }).fetch(request, env, ctx);
-  },
-} satisfies ExportedHandler<Env>;
+const withAdmin = (request: IRequest) => {
+    if (request.user?.role !== 'admin') {
+        return new Response('Forbidden: Admin role required.', { status: 403 });
+    }
+}
 
-async function getOrCreateUser(env: Env, email: string): Promise<string> {
-  const result = await env.AUTH_DB.prepare(
-    `
-		INSERT INTO user (email)
-		VALUES (?)
-		ON CONFLICT (email) DO UPDATE SET email = email
-		RETURNING id;
-		`,
-  )
-    .bind(email)
-    .first<{ id: string }>();
-  if (!result) {
-    throw new Error(`Unable to process user: ${email}`);
-  }
+// Create a new router
+const router = Router();
+
+// --- AUTH DEMO ROUTES ---
+router.get('/', (request: IRequest, env: Env, ctx: ExecutionContext) => {
+  const url = new URL(request.url);
+  url.searchParams.set('redirect_uri', url.origin + '/callback');
+  url.searchParams.set('client_id', 'pos-app');
+  url.searchParams.set('response_type', 'code');
+  url.pathname = '/authorize';
+  return Response.redirect(url.toString());
+});
+
+router.get('/callback', (request: IRequest) => {
+  const url = new URL(request.url);
+  return Response.json({ message: 'OAuth flow complete!', params: Object.fromEntries(url.searchParams.entries()) });
+});
+
+
+// --- API ROUTES ---
+
+// A test route to check the current user's session
+router.get('/api/me', withAuth, (request: IRequest) => {
+    return new Response(JSON.stringify(request.user), { headers: { 'Content-Type': 'application/json' } });
+});
+
+// Product Schema for validation
+const ProductSchema = object({
+    name: string(),
+    price: number(),
+    stock: number(),
+    barcode: optional(string()),
+});
+
+// Products API
+router.get('/api/products', withAuth, async (request: IRequest, env: Env) => {
+    const { results } = await env.AUTH_DB.prepare('SELECT * FROM products').all();
+    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+});
+
+router.get('/api/products/barcode/:code', withAuth, async (request: IRequest, env: Env) => {
+    const { code } = request.params;
+    const { results } = await env.AUTH_DB.prepare('SELECT * FROM products WHERE barcode = ?').bind(code).all();
+    if (results.length === 0) return new Response('Product not found', { status: 404 });
+    return new Response(JSON.stringify(results[0]), { headers: { 'Content-Type': 'application/json' } });
+});
+
+router.post('/api/products', withAuth, withAdmin, async (request: IRequest, env: Env) => {
+    const json = await request.json();
+    const product = parse(ProductSchema, json);
+    const result = await env.AUTH_DB.prepare('INSERT INTO products (name, price, stock, barcode) VALUES (?, ?, ?, ?) RETURNING id').bind(product.name, product.price, product.stock, product.barcode || null).first();
+    return new Response(JSON.stringify(result), { status: 201, headers: { 'Content-Type': 'application/json' } });
+});
+
+router.put('/api/products/:id', withAuth, withAdmin, async (request: IRequest, env: Env) => {
+    const { id } = request.params;
+    const json = await request.json();
+    const product = parse(ProductSchema, json);
+    await env.AUTH_DB.prepare('UPDATE products SET name = ?, price = ?, stock = ?, barcode = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(product.name, product.price, product.stock, product.barcode || null, id).run();
+    return new Response(null, { status: 204 });
+});
+
+router.delete('/api/products/:id', withAuth, withAdmin, async (request: IRequest, env: Env) => {
+    const { id } = request.params;
+    await env.AUTH_DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
+    return new Response(null, { status: 204 });
+});
+
+
+// Transactions API
+const TransactionSchema = object({
+    type: string(),
+    amount: number(),
+    description: optional(string()),
+});
+
+router.post('/api/transactions', withAuth, async (request: IRequest, env: Env) => {
+    const json = await request.json();
+    const transaction = parse(TransactionSchema, json);
+    const result = await env.AUTH_DB.prepare('INSERT INTO transactions (type, amount, description, user_id) VALUES (?, ?, ?, ?) RETURNING id').bind(transaction.type, transaction.amount, transaction.description || null, request.user.id).first();
+    return new Response(JSON.stringify(result), { status: 201, headers: { 'Content-Type': 'application/json' } });
+});
+
+router.get('/api/transactions', withAuth, async (request: IRequest, env: Env) => {
+    const { results } = await env.AUTH_DB.prepare('SELECT * FROM transactions ORDER BY created_at DESC').all();
+    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+});
+
+// A catch-all for auth routes, must be last for the router.
+router.all('*', (request: IRequest, env: Env, ctx: ExecutionContext) => {
+    const auth = createAuth(env);
+    return auth.fetch(request, env, ctx);
+});
+
+// --- DATABASE HELPERS ---
+async function getOrCreateUser(env: Env, email: string): Promise<{ id: string, role: string }> {
+  const result = await env.AUTH_DB.prepare('INSERT INTO user (email) VALUES (?) ON CONFLICT (email) DO UPDATE SET email = email RETURNING id, role;').bind(email).first<{ id: string, role: string }>();
+  if (!result) throw new Error(`Unable to process user: ${email}`);
   console.log(`Found or created user ${result.id} with email ${email}`);
-  return result.id;
+  return result;
+}
+
+// --- Main Handler ---
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return router.handle(request, env, ctx).catch(err => {
+        console.error(err);
+        const errorMessage = err.issues ? JSON.stringify(err.issues) : err.message;
+        return new Response(errorMessage, { status: 400 });
+    });
+  },
+};
+
+// Add user to itty-router's IRequest
+declare module 'itty-router' {
+    interface IRequest {
+        user?: {
+            id: string;
+            role: string;
+        }
+    }
 }
